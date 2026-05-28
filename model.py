@@ -43,16 +43,34 @@ class CausalSelfAttention(nn.Module):
         - 因果：位置 i 的 query 不能看到 key 位置 j>i；可用上三角为 True 的 bool 与 masked_fill(..., -inf)，
           在最后一维上 softmax 后禁止位置为 0 概率，而非 NaN（注意 -inf 经 softmax 为 0）。
         """
-        # ========== 在下方补全；完成后删除本行 raise ==========
-        raise NotImplementedError("请补全 CausalSelfAttention.forward（手搓缩放点积 + 因果下三角掩码）")
+        B, T, C = x.size()
 
-        # 实现提示（可删，实现后请去掉不会被执行到的死代码/占位注释）：
-        # b, t, c = x.size()
-        # q, k, v 由 self.w_q / w_k / w_v 得到，再 view 为 (B, n_head, T, d_head)
-        # att = (q @ k^T) / sqrt(self.d_head)
-        # 构造 (T, T) 的因果上三角（或对 j>i 的掩码）并 masked_fill
-        # att = dropout(softmax(att, dim=-1))；y = att @ v
-        # y: (B, n_head, T, d_head) → 合并为 (B, T, C) 后经 self.w_o
+        # 1. 线性投影
+        q = self.w_q(x)  # (B, T, C)
+        k = self.w_k(x)
+        v = self.w_v(x)
+
+        # 2. 拆分多头：(B, T, C) → (B, n_head, T, d_head)
+        q = q.view(B, T, self.n_head, self.d_head).transpose(1, 2)
+        k = k.view(B, T, self.n_head, self.d_head).transpose(1, 2)
+        v = v.view(B, T, self.n_head, self.d_head).transpose(1, 2)
+
+        # 3. 缩放点积注意力
+        scale = self.d_head ** -0.5
+        att = (q @ k.transpose(-2, -1)) * scale  # (B, n_head, T, T)
+
+        # 4. 因果掩码：位置 i 不能看到 j > i 的位置
+        mask = torch.triu(torch.ones(T, T, device=x.device, dtype=torch.bool), diagonal=1)
+        att = att.masked_fill(mask, float('-inf'))
+
+        # 5. softmax + dropout
+        att = torch.softmax(att, dim=-1)
+        att = self.dropout(att)
+
+        # 6. 与 V 相乘，合并多头，输出线性层
+        y = att @ v                              # (B, n_head, T, d_head)
+        y = y.transpose(1, 2).contiguous().view(B, T, C)  # (B, T, C)
+        return self.w_o(y)
 
 
 class FeedForward(nn.Module):
@@ -66,15 +84,18 @@ class FeedForward(nn.Module):
         self.d_model = d_model
         self.d_ff = d_ff
         self.dropout_p = float(dropout)
-        # ========== 在下方注册子层（如两个 nn.Linear、GELU、nn.Dropout），或 nn.Sequential；补全后删除下一行 ==========
-        raise NotImplementedError("请补全 FeedForward.__init__（d_model→d_ff→GELU→d_model，并带 Dropout）")
+        self.net = nn.Sequential(
+            nn.Linear(d_model, d_ff),
+            nn.GELU(),
+            nn.Linear(d_ff, d_model),
+            nn.Dropout(dropout),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         x: (B, T, d_model)，返回 (B, T, d_model)。
         """
-        # ========== 在下方补全；补全后删除下一行 ==========
-        raise NotImplementedError("请补全 FeedForward.forward")
+        return self.net(x)
 
 
 class TransformerBlock(nn.Module):
