@@ -1,0 +1,4 @@
+name,d_model,n_head,n_layer,d_ff,lr,epochs,max_train_batches,val_loss,ckpt,loss_curve
+A_baseline,128,4,2,512,3e-4,2,300,6.2569,ckpt_A_baseline.pt,loss_A_baseline.png
+B_wider,192,6,2,768,3e-4,2,300,6.1227,ckpt_B_wider.pt,loss_B_wider.png
+C_higher_lr,128,4,2,512,1e-3,2,300,5.859,ckpt_C_higher_lr.pt,loss_C_higher_lr.png
